@@ -53,6 +53,38 @@ Security is prioritized by restricting port bindings to `127.0.0.1` (localhost) 
    docker-compose up -d
    ```
 
+## Cloudflare Zero Trust Tunnel Setup
+
+To securely connect this infrastructure to the web without opening any public ports on your Oracle VM, follow these steps:
+
+1. **Access Cloudflare Zero Trust**:
+   - Go to your [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com).
+   - Navigate to **Networks > Tunnels**.
+
+2. **Create a New Tunnel**:
+   - Click **Create a tunnel**.
+   - Choose **Cloudflared** as the connector type and click Next.
+   - Name your tunnel (e.g., `oracle-vm-tunnel`) and save.
+
+3. **Get the Tunnel Token**:
+   - On the installation page, choose **Docker** as the environment.
+   - Copy the `TUNNEL_TOKEN` from the provided command. It is the long alphanumeric string after `--token`.
+   - Paste this token into the `.env` file of this repository on your VM (`TUNNEL_TOKEN=your_token_here`).
+   - Run `docker-compose up -d cloudflared` (or start all services) to start the tunnel.
+
+4. **Configure Public Hostnames**:
+   - Go back to the Cloudflare Zero Trust Dashboard, select your tunnel, and go to the **Public Hostname** tab.
+   - For each domain/subdomain you want to host, add a Public Hostname.
+   - **Service Type**: `HTTP`
+   - **URL**: `nginx-proxy-manager:80`
+   - *Explanation*: Cloudflare will forward all external traffic to the Nginx Proxy Manager container on port 80. NPM will then use its internal configurations to route the traffic to the correct application container on the `infra-network`.
+
+5. **(Optional) Secure Admin Interfaces**:
+   - You can securely access Portainer or the NPM Admin interface remotely through Cloudflare Access.
+   - Add a Public Hostname for NPM Admin (e.g., `npm.yourdomain.com`) pointing to `HTTP://nginx-proxy-manager:81`.
+   - Add a Public Hostname for Portainer (e.g., `portainer.yourdomain.com`) pointing to `HTTP://portainer:9000`.
+   - **Important**: If you do this, ensure you configure **Cloudflare Access Policies** to require strict authentication (e.g., Email OTP, GitHub, or Google Login) to protect these sensitive panels.
+
 ## Connecting Other Projects
 
 For any other project running on this VM (e.g., Laravel, Django, Go), ensure its `docker-compose.yml` is configured to join the external `infra-network`:
