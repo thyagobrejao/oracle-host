@@ -8,8 +8,7 @@ It uses Docker Compose to provision essential shared services securely, ensuring
 
 All standalone projects hosted on this server run on a shared external Docker network called `infra-network`. This infrastructure repository defines that network and hosts the following shared services:
 
-- **Nginx Proxy Manager (NPM)**: Acts as the reverse proxy for routing incoming web traffic to the appropriate containers (Django, Laravel, Go) across the shared network based on domain names.
-- **Cloudflare Tunnel (`cloudflared`)**: Connects the local infrastructure securely to the Cloudflare edge network, eliminating the need to expose inbound ports (like 80/443) to the public internet.
+- **Cloudflare Tunnel (`cloudflared`)**: Connects the local infrastructure securely to the Cloudflare edge network, eliminating the need to expose inbound ports (like 80/443) to the public internet. It routes external domain traffic directly to individual containers running on the shared network.
 - **Portainer**: A lightweight web interface to easily manage Docker containers, images, volumes, and networks on the host machine.
 - **Redis**: A shared, internal in-memory data structure store used as a database, cache, and message broker by multiple projects.
 
@@ -18,9 +17,9 @@ All standalone projects hosted on this server run on a shared external Docker ne
 ## Security
 
 Security is prioritized by restricting port bindings to `127.0.0.1` (localhost) or entirely disabling them for internal services:
-- **Portainer UI (9000)** and **NPM Admin UI (81)** are only accessible locally on the host. We recommend using Cloudflare Access or an SSH tunnel to access these interfaces remotely.
+- **Portainer UI (9000)** is only accessible locally on the host. We recommend using Cloudflare Access or an SSH tunnel to access this interface remotely.
 - **Redis (6379)** is fully isolated and only reachable by other containers attached to the `infra-network`.
-- Standard web traffic (80/443) is meant to be handled via the Cloudflare Tunnel. The local bindings are kept for testing or fallback scenarios and are restricted to localhost.
+- No services bind to standard public web ports (80/443). All external incoming traffic is handled securely and encrypted via the Cloudflare Tunnel.
 
 ## Prerequisites
 
@@ -74,24 +73,25 @@ To securely connect this infrastructure to the web without opening any public po
 
 4. **Configure Public Hostnames**:
    - Go back to the Cloudflare Zero Trust Dashboard, select your tunnel, and go to the **Public Hostname** tab.
-   - For each domain/subdomain you want to host, add a Public Hostname.
-   - **Service Type**: `HTTP`
-   - **URL**: `nginx-proxy-manager:80`
-   - *Explanation*: Cloudflare will forward all external traffic to the Nginx Proxy Manager container on port 80. NPM will then use its internal configurations to route the traffic to the correct application container on the `infra-network`.
+   - For each application/subdomain you want to host, add a Public Hostname to route directly to its container.
+   - **Example**: To expose a Django project running in container `eccnacional-app` on port `8000`:
+     - **Subdomain**: `eccnacional`
+     - **Domain**: `yourdomain.com`
+     - **Service Type**: `HTTP`
+     - **URL**: `eccnacional-app:8000` (Docker DNS resolves this to the container's internal IP).
 
 5. **(Optional) Secure Admin Interfaces via Cloudflare Access**:
-   - You can securely access Portainer or the NPM Admin interface remotely by placing them behind an authentication wall using Cloudflare Access.
-   - First, add a Public Hostname in your tunnel for NPM Admin (e.g., `npm.yourdomain.com`) pointing to `HTTP://nginx-proxy-manager:81`.
-   - Add another Public Hostname for Portainer (e.g., `portainer.yourdomain.com`) pointing to `HTTP://portainer:9000`.
+   - You can securely access Portainer remotely by placing it behind an authentication wall using Cloudflare Access.
+   - First, add a Public Hostname in your tunnel for Portainer (e.g., `portainer.yourdomain.com`) pointing to `HTTP://portainer:9000`.
    
    **To Configure Access Policies (Authentication):**
    - In the Zero Trust Dashboard, navigate to **Access > Applications**.
    - Click **Add an application** and select **Self-hosted**.
-   - Name your application (e.g., "Portainer Admin") and set the subdomain you configured earlier (e.g., `portainer.yourdomain.com`).
+   - Name your application (e.g., "Portainer") and set the subdomain you configured earlier (e.g., `portainer.yourdomain.com`).
    - Click **Next** to define policies. Name your policy (e.g., "Allow Admins").
    - Under **Action**, select `Allow`.
    - Under **Configure rules** > **Include**, choose the method of authentication, such as `Emails` and type your personal email address. This uses a one-time PIN (OTP) sent to your email. You can also configure GitHub or Google logins in **Settings > Authentication**.
-   - Save the application. Now, whenever you visit your admin URL, Cloudflare will intercept the request and require authentication before forwarding traffic to your Oracle VM.
+   - Save the application. Now, whenever you visit `portainer.yourdomain.com`, Cloudflare will intercept the request and require authentication before forwarding traffic to your Portainer container.
 
 ## Connecting Other Projects
 
@@ -105,4 +105,4 @@ networks:
     external: true
 ```
 
-Instead of exposing ports on the application containers, map their container names and internal ports in the Nginx Proxy Manager interface to route traffic accordingly (e.g., Forward `app.yourdomain.com` to `http://django-app:8000`).
+Instead of exposing ports on the host, you just need to run your applications inside the `infra-network`. To map domains/subdomains to these projects, add them as **Public Hostnames** in your Cloudflare Tunnel pointing directly to their internal container name and port (e.g., `http://laravel-app:80` or `http://django-app:8000`).
