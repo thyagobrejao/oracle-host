@@ -59,10 +59,10 @@ To securely connect this infrastructure to the web without opening any public po
 
 1. **Access Cloudflare Zero Trust**:
    - Go to your [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com).
-   - Navigate to **Networks > Tunnels**.
+   - Navigate to **Networks > Connectors**.
 
 2. **Create a New Tunnel**:
-   - Click **Create a tunnel**.
+   - Click on the **Create Tunnel** button.
    - Choose **Cloudflared** as the connector type and click Next.
    - Name your tunnel (e.g., `oracle-vm-tunnel`) and save.
 
@@ -79,11 +79,19 @@ To securely connect this infrastructure to the web without opening any public po
    - **URL**: `nginx-proxy-manager:80`
    - *Explanation*: Cloudflare will forward all external traffic to the Nginx Proxy Manager container on port 80. NPM will then use its internal configurations to route the traffic to the correct application container on the `infra-network`.
 
-5. **(Optional) Secure Admin Interfaces**:
-   - You can securely access Portainer or the NPM Admin interface remotely through Cloudflare Access.
-   - Add a Public Hostname for NPM Admin (e.g., `npm.yourdomain.com`) pointing to `HTTP://nginx-proxy-manager:81`.
-   - Add a Public Hostname for Portainer (e.g., `portainer.yourdomain.com`) pointing to `HTTP://portainer:9000`.
-   - **Important**: If you do this, ensure you configure **Cloudflare Access Policies** to require strict authentication (e.g., Email OTP, GitHub, or Google Login) to protect these sensitive panels.
+5. **(Optional) Secure Admin Interfaces via Cloudflare Access**:
+   - You can securely access Portainer or the NPM Admin interface remotely by placing them behind an authentication wall using Cloudflare Access.
+   - First, add a Public Hostname in your tunnel for NPM Admin (e.g., `npm.yourdomain.com`) pointing to `HTTP://nginx-proxy-manager:81`.
+   - Add another Public Hostname for Portainer (e.g., `portainer.yourdomain.com`) pointing to `HTTP://portainer:9000`.
+   
+   **To Configure Access Policies (Authentication):**
+   - In the Zero Trust Dashboard, navigate to **Access > Applications**.
+   - Click **Add an application** and select **Self-hosted**.
+   - Name your application (e.g., "Portainer Admin") and set the subdomain you configured earlier (e.g., `portainer.yourdomain.com`).
+   - Click **Next** to define policies. Name your policy (e.g., "Allow Admins").
+   - Under **Action**, select `Allow`.
+   - Under **Configure rules** > **Include**, choose the method of authentication, such as `Emails` and type your personal email address. This uses a one-time PIN (OTP) sent to your email. You can also configure GitHub or Google logins in **Settings > Authentication**.
+   - Save the application. Now, whenever you visit your admin URL, Cloudflare will intercept the request and require authentication before forwarding traffic to your Oracle VM.
 
 ## Connecting Other Projects
 
