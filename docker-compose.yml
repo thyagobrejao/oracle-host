@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  nginx-proxy-manager:
+    image: jc21/nginx-proxy-manager:latest
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      # Se você usar o Cloudflare Tunnel para todo o tráfego externo (Recomendado),
+      # você pode comentar as portas 80 e 443 do host! O container cloudflared 
+      # encaminhará o tráfego diretamente para este container via rede interna.
+      - "127.0.0.1:80:80"
+      - "127.0.0.1:443:443"
+      - "127.0.0.1:81:81" # Seguro: Admin UI acessível apenas localmente (ou via túnel SSH/Cloudflare Access)
+    volumes:
+      - ./npm/data:/data
+      - ./npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - default
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9000:9000" # Seguro: restrito localmente no host para evitar invasões
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./portainer/data:/data
+    networks:
+      - default
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: >
+      redis-server --appendonly yes --save 60 1000
+    # O Redis não precisa de portas públicas pois as aplicações na 'infra-network'
+    # acessam o container diretamente pelo hostname 'redis' na rede interna.
+    # ports:
+    #   - "127.0.0.1:6379:6379"
+    volumes:
+      - ./redis/data:/data
+    networks:
+      - default
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN} # Preencha no arquivo .env deste diretório
+    networks:
+      - default
+
+networks:
+  default:
+    name: infra-network
