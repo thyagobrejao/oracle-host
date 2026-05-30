@@ -132,8 +132,8 @@ To automate the backups, add the execution scripts to the host crontab (`crontab
 
 ```bash
 # PostgreSQL Backup - Every day at 03:00 AM
-0 3 * * * /Users/thyago/Code/oracle-host/backup_db.sh >> /Users/thyago/Code/oracle-host/backups/postgres_backup.log 2>&1
+0 3 * * * /home/ubuntu/oracle-host/backup_db.sh >> /home/ubuntu/oracle-host/backups/postgres_backup.log 2>&1
 
 # MySQL Backup - Every day at 04:00 AM
-0 4 * * * /Users/thyago/Code/oracle-host/backup_mysql.sh >> /Users/thyago/Code/oracle-host/backups/mysql_backup.log 2>&1
+0 4 * * * /home/ubuntu/oracle-host/backup_mysql.sh >> /home/ubuntu/oracle-host/backups/mysql_backup.log 2>&1
 ```
