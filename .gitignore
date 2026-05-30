@@ -5,6 +5,11 @@
 npm/
 portainer/
 redis/
+mysql/
+postgres/
+
+# Backup directory
+backups/
 
 # OS generated files
 .DS_Store

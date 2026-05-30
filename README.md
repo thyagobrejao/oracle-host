@@ -1,132 +1,139 @@
-# Unified Oracle Cloud VM Infrastructure
+# Secure Shared Infrastructure for Cloud VMs
 
-This repository contains the foundational infrastructure configuration for hosting multiple web applications and services on a single Oracle Cloud VM (ARM64 architecture).
+This repository contains the foundational infrastructure configuration for hosting multiple web applications and services on a single Oracle Cloud VM (or any cloud VPS) using ARM64 or x86_64 architecture.
 
-It uses Docker Compose to provision essential shared services securely, ensuring zero external port exposure by default through the use of a Cloudflare Zero Trust Tunnel.
+It leverages Docker Compose to provision essential shared services securely, ensuring **zero public port exposure** by default. Direct external incoming traffic is completely eliminated, and access is managed via a secure Cloudflare Zero Trust Tunnel.
 
-## Architecture Overview
+---
 
-All standalone projects hosted on this server run on a shared external Docker network called `infra-network`. This infrastructure repository defines that network and hosts the following shared services:
+## Features & Services
 
-- **Cloudflare Tunnel (`cloudflared`)**: Connects the local infrastructure securely to the Cloudflare edge network, eliminating the need to expose inbound ports (like 80/443) to the public internet. It routes external domain traffic directly to individual containers running on the shared network.
+All standalone projects hosted on this server connect to a shared, external Docker network named `infra-network`. This infrastructure repository defines that network and hosts the following central services:
+
+- **Cloudflare Tunnel (`cloudflared`)**: Establishes a secure, encrypted outbound tunnel to the Cloudflare edge network. This completely bypasses the need for open inbound ports (like 80/443) on your firewall, protecting your VM from port scans and DDoS attacks.
 - **Portainer**: A lightweight web interface to easily manage Docker containers, images, volumes, and networks on the host machine.
-- **Redis**: A shared, internal in-memory data structure store used as a database, cache, and message broker by multiple projects.
+- **Redis**: A shared, in-memory data store used as a high-speed database, cache, or message broker by multiple projects.
+- **Databases (`postgres` & `mysql`)**:
+  - **PostgreSQL**: Production-ready relational database.
+  - **MySQL**: Standard relational database.
+  - *Note: Both databases are bound strictly to `127.0.0.1` (localhost) and are inaccessible from the public internet, protecting your data at all times.*
 
-*Note: All application databases have been migrated to a managed PostgreSQL cluster on Digital Ocean. Therefore, no relational database containers run on this host.*
+---
 
-## Security
+## Security First Design
 
-Security is prioritized by restricting port bindings to `127.0.0.1` (localhost) or entirely disabling them for internal services:
-- **Portainer UI (9000)** is only accessible locally on the host. We recommend using Cloudflare Access or an SSH tunnel to access this interface remotely.
-- **Redis (6379)** is fully isolated and only reachable by other containers attached to the `infra-network`.
-- No services bind to standard public web ports (80/443). All external incoming traffic is handled securely and encrypted via the Cloudflare Tunnel.
+Security is prioritized by restricting port bindings or completely omitting them for internal services:
+- **Portainer UI (9000)** is only bound to `127.0.0.1` and accessible locally. We recommend putting it behind **Cloudflare Access** (with email verification/MFA) for secure, convenient remote administration.
+- **Redis (6379)** is fully isolated with no port exposed to the host VM; it is only reachable internally by containers on the `infra-network`.
+- **Databases (PostgreSQL on 5432, MySQL on 3306)** are locked to `127.0.0.1`. They can only be accessed locally by hosted applications or remotely via a secure SSH tunnel.
+- **Repository Safety**: The `.gitignore` is pre-configured to strictly ignore sensitive database volumes (`mysql/`, `postgres/`), your `.env` configuration file, and local backups (`backups/`) to prevent accidental leaks on public repositories.
+
+---
 
 ## Prerequisites
 
 - Docker and Docker Compose installed on the host.
-- A Cloudflare account with Zero Trust tunnels configured.
+- A Cloudflare account with a Zero Trust Tunnel configured.
+
+---
 
 ## Getting Started
 
-1. **Clone the repository** to your Oracle VM host:
+1. **Clone the repository** to your VM host:
    ```bash
    git clone <your-repo-url>
    cd oracle-host
    ```
 
 2. **Configure Environment Variables**:
-   Copy the example environment file and fill in your Cloudflare Tunnel token:
+   Copy the example environment file and define your secrets:
    ```bash
    cp .env.example .env
-   # Edit .env and set your TUNNEL_TOKEN
+   # Edit .env and populate your Cloudflare token, DB passwords, and S3 credentials
    ```
 
-3. **Initialize the Shared Infrastructure Network**:
-   This network must be created before starting the infrastructure or any client applications.
+3. **Initialize the Shared Docker Network**:
+   Create the external bridge network before booting up the services:
    ```bash
    docker network create infra-network
    ```
 
-4. **Start the Services**:
+4. **Start the Infrastructure**:
    ```bash
    docker-compose up -d
    ```
 
+---
+
 ## Cloudflare Zero Trust Tunnel Setup
 
-To securely connect this infrastructure to the web without opening any public ports on your Oracle VM, follow these steps:
+To securely route domains to your VM applications without opening inbound ports:
 
-1. **Access Cloudflare Zero Trust**:
+1. **Create a Tunnel**:
    - Go to your [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com).
-   - Navigate to **Networks > Connectors**.
+   - Navigate to **Networks > Connectors** and click **Create Tunnel**.
+   - Select **Cloudflared** as the connector type, name it (e.g., `oracle-vm-tunnel`), and click save.
 
-2. **Create a New Tunnel**:
-   - Click on the **Create Tunnel** button.
-   - Choose **Cloudflared** as the connector type and click Next.
-   - Name your tunnel (e.g., `oracle-vm-tunnel`) and save.
+2. **Retrieve the Token**:
+   - In the Docker tab, copy the `TUNNEL_TOKEN` value (the long alphanumeric string after `--token`).
+   - Paste it into your local `.env` file as `TUNNEL_TOKEN=your_token_here`.
+   - Re-run `docker-compose up -d cloudflared` to connect the host.
 
-3. **Get the Tunnel Token**:
-   - On the installation page, choose **Docker** as the environment.
-   - Copy the `TUNNEL_TOKEN` from the provided command. It is the long alphanumeric string after `--token`.
-   - Paste this token into the `.env` file of this repository on your VM (`TUNNEL_TOKEN=your_token_here`).
-   - Run `docker-compose up -d cloudflared` (or start all services) to start the tunnel.
+3. **Map Your Applications**:
+   - Under the tunnel's **Public Hostname** tab, add a route for each domain/subdomain you want to host.
+   - **Example**: Map `eccnacional.yourdomain.com` directly to `http://eccnacional-app:8000` (Docker DNS handles local routing automatically).
 
-4. **Configure Public Hostnames**:
-   - Go back to the Cloudflare Zero Trust Dashboard, select your tunnel, and go to the **Public Hostname** tab.
-   - For each application/subdomain you want to host, add a Public Hostname to route directly to its container.
-   - **Example**: To expose a Django project running in container `eccnacional-app` on port `8000`:
-     - **Subdomain**: `eccnacional`
-     - **Domain**: `yourdomain.com`
-     - **Service Type**: `HTTP`
-     - **URL**: `eccnacional-app:8000` (Docker DNS resolves this to the container's internal IP).
+4. **Secure Admin Consoles via Cloudflare Access**:
+   - Expose Portainer through a subdomain (e.g., `portainer.yourdomain.com`) routed to `http://portainer:9000`.
+   - Go to **Access > Applications** and click **Add an application** (Self-hosted).
+   - Require authentication methods such as One-Time PINs (OTP) sent to your email to prevent unauthorized access.
 
-5. **(Optional) Secure Admin Interfaces via Cloudflare Access**:
-   - You can securely access Portainer remotely by placing it behind an authentication wall using Cloudflare Access.
-   - First, add a Public Hostname in your tunnel for Portainer (e.g., `portainer.yourdomain.com`) pointing to `HTTP://portainer:9000`.
-   
-   **To Configure Access Policies (Authentication):**
-   - In the Zero Trust Dashboard, navigate to **Access > Applications**.
-   - Click **Add an application** and select **Self-hosted**.
-   - Name your application (e.g., "Portainer") and set the subdomain you configured earlier (e.g., `portainer.yourdomain.com`).
-   - Click **Next** to define policies. Name your policy (e.g., "Allow Admins").
-   - Under **Action**, select `Allow`.
-   - Under **Configure rules** > **Include**, choose the method of authentication, such as `Emails` and type your personal email address. This uses a one-time PIN (OTP) sent to your email. You can also configure GitHub or Google logins in **Settings > Authentication**.
-   - Save the application. Now, whenever you visit `portainer.yourdomain.com`, Cloudflare will intercept the request and require authentication before forwarding traffic to your Portainer container.
+---
 
-## Connecting Other Projects
+## Connecting Client Projects
 
-For any other project running on this VM (e.g., Laravel, Django, Go), ensure its `docker-compose.yml` is configured to join the external `infra-network`:
+For external projects running on the same VM, configure their `docker-compose.yml` to attach to the shared network:
 
 ```yaml
-# Example snippet for client applications
+# Example docker-compose.yml for separate app projects
+services:
+  web:
+    image: my-app:latest
+    networks:
+      - default
+
 networks:
   default:
     name: infra-network
     external: true
 ```
 
-Instead of exposing ports on the host, you just need to run your applications inside the `infra-network`. To map domains/subdomains to these projects, add them as **Public Hostnames** in your Cloudflare Tunnel pointing directly to their internal container name and port (e.g., `http://laravel-app:80` or `http://django-app:8000`).
+---
 
-## Automated Backups
+## Production-Grade Automated Backups
 
-This repository includes two production-grade backup scripts for database engines running locally in Docker containers:
+This repository provides two robust scripts to handle database backups seamlessly:
 
-1. **PostgreSQL Backup (`backup_db.sh`)**:
-   - Performs a complete logical backup of all PostgreSQL databases using `pg_dumpall`.
-   - Compacts the output with gzip, generates SHA256 checksums, uploads them to AWS S3, sends success/failure alerts to Telegram, and rotates local backups older than 7 days.
+### 1. PostgreSQL Backup (`backup_db.sh`)
+- Performs a complete logical backup of all PostgreSQL databases using `pg_dumpall`.
+- Streams output into a gzip file using non-blocking named pipes (`mkfifo`) to maximize I/O efficiency.
+- Computes SHA256 checksums for backup verification.
+- Uploads the compressed dump and checksum to **AWS S3** via an ARM64-compatible AWS CLI Docker container.
+- Sends instant success/failure notifications to a **Telegram Channel** using a Telegram Bot.
+- Autocleans local backups older than 7 days.
 
-2. **MySQL Backup (`backup_mysql.sh`)**:
-   - Performs a hot, consistent logical backup of all MySQL databases using `mysqldump` with `--single-transaction --quick --routines --triggers`.
-   - Compresses, hashes, uploads to AWS S3, notifies Telegram, and manages 7-day rotation similarly.
+### 2. MySQL Backup (`backup_mysql.sh`)
+- Performs consistent hot logical backups of all MySQL databases using `mysqldump` with `--single-transaction --quick --routines --triggers`.
+- Employs identical features (compression, SHA256 integrity, AWS S3 upload, Telegram notifications, and 7-day local rotation).
 
-### Setting Up Cron Jobs
+### Setting Up the Cron Schedule
 
-You can configure automatic schedules for both databases by editing your crontab (`crontab -e`) on the Oracle host:
+To automate the backups, add the execution scripts to the host crontab (`crontab -e`):
 
 ```bash
-# Backup do PostgreSQL diariamente às 03:00 AM
+# PostgreSQL Backup - Every day at 03:00 AM
 0 3 * * * /Users/thyago/Code/oracle-host/backup_db.sh >> /Users/thyago/Code/oracle-host/backups/postgres_backup.log 2>&1
 
-# Backup do MySQL diariamente às 04:00 AM
+# MySQL Backup - Every day at 04:00 AM
 0 4 * * * /Users/thyago/Code/oracle-host/backup_mysql.sh >> /Users/thyago/Code/oracle-host/backups/mysql_backup.log 2>&1
 ```
