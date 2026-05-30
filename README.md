@@ -106,3 +106,27 @@ networks:
 ```
 
 Instead of exposing ports on the host, you just need to run your applications inside the `infra-network`. To map domains/subdomains to these projects, add them as **Public Hostnames** in your Cloudflare Tunnel pointing directly to their internal container name and port (e.g., `http://laravel-app:80` or `http://django-app:8000`).
+
+## Automated Backups
+
+This repository includes two production-grade backup scripts for database engines running locally in Docker containers:
+
+1. **PostgreSQL Backup (`backup_db.sh`)**:
+   - Performs a complete logical backup of all PostgreSQL databases using `pg_dumpall`.
+   - Compacts the output with gzip, generates SHA256 checksums, uploads them to AWS S3, sends success/failure alerts to Telegram, and rotates local backups older than 7 days.
+
+2. **MySQL Backup (`backup_mysql.sh`)**:
+   - Performs a hot, consistent logical backup of all MySQL databases using `mysqldump` with `--single-transaction --quick --routines --triggers`.
+   - Compresses, hashes, uploads to AWS S3, notifies Telegram, and manages 7-day rotation similarly.
+
+### Setting Up Cron Jobs
+
+You can configure automatic schedules for both databases by editing your crontab (`crontab -e`) on the Oracle host:
+
+```bash
+# Backup do PostgreSQL diariamente às 03:00 AM
+0 3 * * * /Users/thyago/Code/oracle-host/backup_db.sh >> /Users/thyago/Code/oracle-host/backups/postgres_backup.log 2>&1
+
+# Backup do MySQL diariamente às 04:00 AM
+0 4 * * * /Users/thyago/Code/oracle-host/backup_mysql.sh >> /Users/thyago/Code/oracle-host/backups/mysql_backup.log 2>&1
+```
